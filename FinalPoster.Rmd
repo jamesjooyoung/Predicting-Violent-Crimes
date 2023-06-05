@@ -1,0 +1,188 @@
+---
+title: "Final Poster"
+output: PDF Doc
+EDA and Logistic Regression
+---
+```{r}
+# Install and load the ggcorrplot and ggplot2 packages
+install.packages(c("ggcorrplot", "ggplot2"))
+library(ggcorrplot)
+library(ggplot2)
+
+# Install and load the caret package
+install.packages("caret")
+library(caret)
+
+install.packages("readr")
+library(readr)
+# Install and load the mice package
+install.packages("mice")
+library(mice)
+
+library(dplyr)
+
+library(corrplot)
+```
+
+
+```{r}
+
+crime_data <- read_delim("communities.data", delim = ",")
+column_names <- c("state", "county", "community", "communityname", "fold", "population", "householdsize", "racepctblack", "racePctWhite", "racePctAsian", "racePctHisp", "agePct12t21", "agePct12t29", "agePct16t24", "agePct65up", "numbUrban", "pctUrban", "medIncome", "pctWWage", "pctWFarmSelf", "pctWInvInc", "pctWSocSec", "pctWPubAsst", "pctWRetire", "medFamInc", "perCapInc", "whitePerCap", "blackPerCap", "indianPerCap", "AsianPerCap", "OtherPerCap", "HispPerCap", "NumUnderPov", "PctPopUnderPov", "PctLess9thGrade", "PctNotHSGrad", "PctBSorMore", "PctUnemployed", "PctEmploy", "PctEmplManu", "PctEmplProfServ", "PctOccupManu", "PctOccupMgmtProf", "MalePctDivorce", "MalePctNevMarr", "FemalePctDiv", "TotalPctDiv", "PersPerFam", "PctFam2Par", "PctKids2Par", "PctYoungKids2Par", "PctTeen2Par", "PctWorkMomYoungKids", "PctWorkMom", "NumIlleg", "PctIlleg", "NumImmig", "PctImmigRecent", "PctImmigRec5", "PctImmigRec8", "PctImmigRec10", "PctRecentImmig", "PctRecImmig5", "PctRecImmig8", "PctRecImmig10", "PctSpeakEnglOnly", "PctNotSpeakEnglWell", "PctLargHouseFam", "PctLargHouseOccup", "PersPerOccupHous", "PersPerOwnOccHous", "PersPerRentOccHous", "PctPersOwnOccup", "PctPersDenseHous", "PctHousLess3BR", "MedNumBR", "HousVacant", "PctHousOccup", "PctHousOwnOcc", "PctVacantBoarded", "PctVacMore6Mos", "MedYrHousBuilt", "PctHousNoPhone", "PctWOFullPlumb", "OwnOccLowQuart", "OwnOccMedVal", "OwnOccHiQuart", "RentLowQ", "RentMedian", "RentHighQ", "MedRent", "MedRentPctHousInc", "MedOwnCostPctInc", "MedOwnCostPctIncNoMtg", "NumInShelters", "NumStreet", "PctForeignBorn", "PctBornSameState", "PctSameHouse85", "PctSameCity85", "PctSameState85", "LemasSwornFT", "LemasSwFTPerPop", "LemasSwFTFieldOps", "LemasSwFTFieldPerPop", "LemasTotalReq", "LemasTotReqPerPop", "PolicReqPerOffic", "PolicPerPop", "RacialMatchCommPol", "PctPolicWhite", "PctPolicBlack", "PctPolicHisp", "PctPolicAsian", "PctPolicMinor", "OfficAssgnDrugUnits", "NumKindsDrugsSeiz", "PolicAveOTWorked", "LandArea", "PopDens", "PctUsePubTrans", "PolicCars", "PolicOperBudg", "LemasPctPolicOnPatr", "LemasGangUnitDeploy", "LemasPctOfficDrugUn", "PolicBudgPerPop", "ViolentCrimesPerPop")
+
+
+# Replace 'column_names' with the list of column names you have
+crime_data <- setNames(crime_data, column_names)
+
+# Replace '?' with NA in the crime_data data frame
+crime_data[crime_data == "?"] <- NA
+
+# Calculate the percentage of missing values per column
+na_percentage <- colMeans(is.na(crime_data))
+
+# Identify columns with 50% or more missing values
+columns_to_drop <- names(na_percentage[na_percentage >= 0.5])
+
+# Drop the identified columns
+crime_data_filtered <- crime_data[, !(names(crime_data) %in% columns_to_drop)]
+
+# Convert all columns to numeric (excluding 'communityname' column, which is a string)
+crime_data_filtered[, setdiff(seq_len(ncol(crime_data_filtered)), 4)] <- 
+  apply(crime_data_filtered[, setdiff(seq_len(ncol(crime_data_filtered)), 4)], 2, as.numeric)
+
+# Perform random imputation
+mice_imputed_data <- mice(crime_data_filtered, method = "pmm", m = 1, maxit = 1)
+
+# Extract the imputed data
+crime_imputed_data <- complete(mice_imputed_data)
+
+# Display the first few rows of the imputed data
+head(crime_imputed_data)
+
+# Subset the data frame to exclude the 'communityname' column
+crime_data_subset_imputed <- crime_imputed_data[, -which(names(crime_imputed_data) == "communityname")]
+
+# Select only numeric columns
+crime_data_subset_imputed <- dplyr::select_if(crime_data_subset_imputed, is.numeric)
+
+## Compute the correlation matrix
+cor_matrix <- cor(crime_data_subset_imputed, use = "pairwise.complete.obs")
+
+# Find the indices of highly correlated predictors
+#global correction
+high_cor_indices <- findCorrelation(cor_matrix, cutoff = 0.7)
+
+# Initialize list to store indices of features to drop
+features_to_drop <- list()
+# Loop over each group of highly correlated features
+#pairwise correction
+for (i in high_cor_indices) {
+  group <- NULL
+  for (j in high_cor_indices) {
+    if (i != j) {
+      cor_i_j <- cor_matrix[i, j]
+      if (abs(cor_i_j) > 0.9) {
+        if (is.null(group)) {
+          group <- c(names(crime_data_subset_imputed)[i], names(crime_data_subset_imputed)[j])
+        } else {
+          group <- c(group, names(crime_data_subset_imputed)[j])
+        }
+      }
+    }
+  }
+  if (!is.null(group)) {
+    features_to_drop <- append(features_to_drop, list(group))
+  }
+}
+
+# Flatten the list of features to drop
+features_to_drop <- unique(unlist(features_to_drop))
+
+crime_data_subset_imputed_2 <- crime_data_subset_imputed[, !names(crime_data_subset_imputed) %in% features_to_drop]
+# Compute the correlation matrix for the remaining columns
+cor_matrix <- cor(crime_data_subset_imputed_2, use = "pairwise.complete.obs")
+
+# Find the indices of highly correlated predictors for the new correlation matrix.
+#this line is repeated to check for global correlation again
+#global correction 
+# a variable is removed if it has .7 correlation with too many variables
+high_cor_indices <- findCorrelation(cor_matrix, cutoff = 0.7)
+
+# Subset the correlation matrix to only include highly correlated features
+cor_matrix_high_cor <- cor_matrix[high_cor_indices, high_cor_indices]
+
+# Set plot size
+png("correlation_plot.png", width = 1200, height = 1200, res = 150)
+
+# Create the correlation plot
+corrplot(cor_matrix_high_cor, method = "color",
+         col = colorRampPalette(c("#D73027", "#FC8D59", "#FEE090", "#FFFFBF", "#E0F3F8", "#91BFDB", "#4575B4"))(100),
+         type = "lower",
+         tl.col = "black",
+         tl.srt = 45,
+         tl.cex = 0.6,
+         diag = FALSE,
+         addCoef.col = "black",
+         addCoefasPercent = TRUE,
+         number.cex = 0.6)
+
+# Add a separate title above the plot
+title(main = "Correlation Plot with remaining High Correlation Features")
+
+# Save plot
+dev.off()
+
+```
+```{r}
+#packages
+install.packages("ggplot2")
+install.packages("ggpubr")
+library(ggplot2)
+library(ggpubr)
+
+
+#EDA focus starts
+# ViolentCrimesPerPop is target variable
+#we do a qq plot to check skew and normal distribution assumption.
+# QQ plot
+qq_plot <- ggqqplot(crime_data_subset_imputed, "ViolentCrimesPerPop", 
+                    ylab = "Sample Quantiles", 
+                    xlab = "Theoretical Quantiles",
+                    main = "QQ Plot of Violent Crimes Per Population")
+
+ggsave("qq_plot.png", plot = qq_plot)
+
+
+# Box plot
+box_plot <- ggplot(crime_data_subset_imputed, aes(y = ViolentCrimesPerPop)) + 
+            geom_boxplot() +
+            ylab("Violent Crimes Per Population") +
+            xlab("") +
+            ggtitle("Box Plot of Violent Crimes Per Population")
+
+ggsave("box_plot.png", plot = box_plot)
+
+
+# Scatter plot: Poverty vs. Violent Crimes
+scatter_plot_poverty <- ggplot(crime_data_subset_imputed, aes(x = PctPopUnderPov, y = ViolentCrimesPerPop)) +
+                geom_point() +
+                xlab("Percent Population Under Poverty") +
+                ylab("Violent Crimes Per Population") +
+                ggtitle("Scatter Plot of Violent Crimes Per Population vs. Percent Population Under Poverty")
+
+ggsave("scatter_plot_poverty.png", plot = scatter_plot_poverty)
+
+
+# Scatter plot: Education vs. Violent Crimes
+scatter_plot_education <- ggplot(crime_data_subset_imputed, aes(x = PctNotHSGrad, y = ViolentCrimesPerPop)) +
+                geom_point() +
+                xlab("Percent of People Not Graduated from High School") +
+                ylab("Violent Crimes Per Population") +
+                ggtitle("Scatter Plot of Violent Crimes Per Population vs. Percent of People Not Graduated from High School")
+
+ggsave("scatter_plot_education.png", plot = scatter_plot_education)
+
+
+```
+
+
